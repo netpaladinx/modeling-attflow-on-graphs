@@ -104,14 +104,15 @@ class GNModelBase(ModelBase):
         self.att_hiddens = []  # [ bs x n_nodes x n_att_dims ]
         self.info_hiddens = []  # [ bs x n_nodes x n_info_dims ]
         self.globals = []  # [ bs x n_dims ]
-        self.normalized_ones = np.ones([self.n_att_dims], dtype=np.float32) / np.sqrt(self.n_att_dims)  # n_att_dims
         super(GNModelBase, self).__init__(*args, **kwargs)
 
     def initialize(self):
+        self.normalized_ones = np.ones([self.n_att_dims], dtype=np.float32) / np.sqrt(self.n_att_dims)  # n_att_dims
+
         att_hidden = tf.expand_dims(tf.one_hot(self.src, self.n_nodes), axis=2) * self.normalized_ones  # bs x n_nodes x n_att_dims
         self.att_hiddens.append(att_hidden)
 
-        info_hidden = gops.mlp(self.node_emb, [self.n_info_dims], [tf.tanh], name='info_hidden_init')  # n_nodes x n_info_dims
+        info_hidden = gops.mlp(self.node_embs, [self.n_info_dims], [tf.tanh], name='info_hidden_init')  # n_nodes x n_info_dims
         info_hidden = tf.tile(tf.expand_dims(info_hidden, axis=0), [self.bs, 1, 1])  # bs x n_nodes x n_info_dims
         self.info_hiddens.append(info_hidden)
 
@@ -140,7 +141,7 @@ class GNModelBase(ModelBase):
 
     def output_prediction(self):
         final_att_hidden = self.att_hiddens[-1]  # bs x n_nodes x n_att_dims
-        final_att_logits = self.tensordot(final_att_hidden, self.normalized_ones, [[2], [0]])  # bs x n_nodes
+        final_att_logits = tf.tensordot(final_att_hidden, self.normalized_ones, [[2], [0]])  # bs x n_nodes
         return final_att_logits
 
     def compute_loss_and_accuracy(self, prediction):
@@ -243,3 +244,17 @@ class RWModelBase(ModelBase):
         node_attention = tf.transpose(tf.unsorted_segment_sum(flowing_attention, self.v2_ids, self.n_nodes), perm=[1, 0])  # bs x n_nodes
         flowing_attention = tf.transpose(flowing_attention, perm=[1, 0])  # bs x n_edges
         return flowing_attention, node_attention
+
+    def output_prediction(self):
+        final_node_attention = self.node_attentions[-1]  # bs x n_nodes
+        return final_node_attention
+
+    def compute_loss_and_accuracy(self, prediction):
+        dst_idx = tf.stack([tf.range(0, self.bs), self.dst], axis=1)
+        prediction_prob = tf.gather_nd(prediction, dst_idx)
+        pred_loss = tf.reduce_mean(-tf.log(prediction_prob + 1e-12))
+        reg_loss = tf.reduce_sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+        loss = pred_loss + reg_loss
+        accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(prediction, axis=1, output_type=tf.int32), self.dst), tf.float32))
+        return loss, accuracy
+

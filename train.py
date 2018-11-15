@@ -2,14 +2,12 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-import logging
-
 import numpy as np
 import tensorflow as tf
 
 from utils import write_rows
 
-TABLE = 'xxr_experiment_attflow_beta'
+TABLE = 'modeling_attflow_on_graphs'
 FIELDS = ['model', 'dataset', 'gridworld_seed', 'splitting_seed', 'shuffling_seeed', 'model_seed', 'rank',
           'h1r_valid', 'h1r_test', 'h1r_epoch', 'h5r_valid', 'h5r_test', 'h5r_epoch', 'h10r_valid', 'h10r_test', 'h10r_epoch',
           'mr_r_valid', 'mr_r_test', 'mr_r_epoch', 'mrr_r_valid', 'mrr_r_test', 'mrr_r_epoch',
@@ -17,23 +15,13 @@ FIELDS = ['model', 'dataset', 'gridworld_seed', 'splitting_seed', 'shuffling_see
           'mr_f_valid', 'mr_f_test', 'mr_f_epoch', 'mrr_f_valid', 'mrr_f_test', 'mrr_f_epoch']
 
 class Trainer(object):
-    def __init__(self, model):
+    def __init__(self, model, logger):
         self.model = model
+        self.logger = logger
+
         self.train_tracker = []
         self.valid_evaluator = Evaluator(model, source='valid')
         self.test_evaluator = Evaluator(model, source='test')
-
-        self.logger = logging.getLogger('Trainer_%s' % self.name)
-        self.logger.setLevel(logging.INFO)
-        file_handler = logging.FileHandler('%s.log' % self.name)
-        file_handler.setLevel(logging.INFO)
-        stream_handler = logging.StreamHandler()
-        stream_handler.setLevel(logging.INFO)
-        formatter = logging.Formatter('[%(asctime)s] ## %(message)s')
-        file_handler.setFormatter(formatter)
-        stream_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
-        self.logger.addHandler(stream_handler)
 
         self.logger.info('\n=========================')
         self.logger.info('model: %s, dataset: %s, gridword_seed: %d, splitting_seed: %d, shuffling_seed: %d, model_seed: %d'
@@ -68,15 +56,16 @@ class Trainer(object):
                 metric_test = self.test_evaluator(sess, n_epochs)
                 self._write_log(n_epochs, metric_valid, metric_test)
 
+            self._summarize_and_write_sql()
 
     def _write_log(self, n_epochs, metric_valid, metric_test):
         self.logger.info('[EVAL] epoch: %d, h1_r: %.4f (%.4f), h5_r: %.4f (%.4f), h10_r: %.4f (%.4f), mr_r: %.4f (%.4f), mrr_r: %.4f (%.4f), '
                          'h1_f: %.4f (%.4f), h5_f: %.4f (%.4f), h10_f: %.4f (%.4f), mr_f: %.4f (%.4f), mrr_f: %.4f (%.4f)' %
                          (n_epochs, metric_valid[1], metric_test[1], metric_valid[2], metric_test[2],
-                          metric_valid[3], metric_test[1], metric_valid[2], metric_test[2],
-                          metric_valid[5], metric_test[1], metric_valid[2], metric_test[2],
-                          metric_valid[7], metric_test[1], metric_valid[2], metric_test[2],
-                          metric_valid[9], metric_test[1], metric_valid[2], metric_test[2],))
+                          metric_valid[3], metric_test[3], metric_valid[4], metric_test[4],
+                          metric_valid[5], metric_test[5], metric_valid[6], metric_test[6],
+                          metric_valid[7], metric_test[7], metric_valid[8], metric_test[8],
+                          metric_valid[9], metric_test[9], metric_valid[10], metric_test[10],))
 
     def _summarize_and_write_sql(self):
         mtr_va = self.valid_evaluator.metrics
@@ -99,7 +88,7 @@ class Trainer(object):
                     mtr[3][r][1], mtr[3][r][2], mtr[3][r][0], mtr[4][r][1], mtr[4][r][2], mtr[4][r][0], mtr[5][r][1], mtr[5][r][2], mtr[5][r][0],
                     mtr[6][r][1], mtr[6][r][2], mtr[6][r][0], mtr[7][r][1], mtr[7][r][2], mtr[7][r][0], mtr[8][r][1], mtr[8][r][2], mtr[8][r][0],
                     mtr[9][r][1], mtr[9][r][2], mtr[9][r][0])
-            row = (self.model_name, self.dataset_name, self.gridword_seed, self.splitting_seed, self.shuffling_seed, self.model_seed, rank,
+            row = (self.model_name, self.dataset_name, self.gridworld_seed, self.splitting_seed, self.shuffling_seed, self.model_seed, rank,
                    mtr[0][r][1], mtr[0][r][2], mtr[0][r][0], mtr[1][r][1], mtr[1][r][2], mtr[1][r][0], mtr[2][r][1], mtr[2][r][2], mtr[2][r][0],
                    mtr[3][r][1], mtr[3][r][2], mtr[3][r][0], mtr[4][r][1], mtr[4][r][2], mtr[4][r][0], mtr[5][r][1], mtr[5][r][2], mtr[5][r][0],
                    mtr[6][r][1], mtr[6][r][2], mtr[6][r][0], mtr[7][r][1], mtr[7][r][2], mtr[7][r][0], mtr[8][r][1], mtr[8][r][2], mtr[8][r][0],
@@ -126,7 +115,7 @@ class Evaluator(object):
         predicted = []
 
         for bs, batch in self.get_eval_batch(self.batch_size, source=self.source):
-            prediction = self.sess.run(self.prediction, feed_dict={self.inputs: batch})
+            prediction = sess.run(self.prediction, feed_dict={self.inputs: batch})
             pred_idx = np.argsort(-prediction)
             predicted.append(pred_idx)
             observed.append(batch)
@@ -135,7 +124,7 @@ class Evaluator(object):
         predicted = np.concatenate(predicted)
 
         h1_r, h5_r, h10_r, mr_r, mrr_r, h1_f, h5_f, h10_f, mr_f, mrr_f = \
-            self._calc_metrics(predicted, observed, self.observed_pool)
+            self._calc_metrics(predicted, observed, self.observation_pool)
         metric = (n_epochs, h1_r, h5_r, h10_r, mr_r, mrr_r, h1_f, h5_f, h10_f, mr_f, mrr_f)
         self.metrics.append(metric)
         return metric

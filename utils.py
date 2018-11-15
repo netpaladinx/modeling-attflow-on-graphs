@@ -5,10 +5,10 @@ from __future__ import division
 import mysql.connector
 from mysql.connector import Error
 
-HOST = 'your-host-ip'
-DATABASE = 'your-database-name'
-USER = 'your-user-name'
-PASSWORD = 'your-password'
+HOST = '127.0.0.1'
+DATABASE = 'experiments'
+USER = 'root'
+PASSWORD = '12345'
 
 
 class MySQLWriter(object):

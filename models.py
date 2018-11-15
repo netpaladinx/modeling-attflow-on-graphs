@@ -22,7 +22,7 @@ class FullGNMixin(object):
         if step == 0:
             self.node_fn = gops.NodeFunction(self.dataset, nn_module='MLP', nn_layers=1, nn_out_units=self.n_dims,
                                              nn_out_acti=tf.tanh, ignore_nodetype=True, name='node_update_fn')
-        new_hidden = self.node_fn(hidden, message_aggr, node_embs=self.node_embs, global_state=g)  # bs x n_nodes x n_dims
+        new_hidden = self.node_fn(hidden, node_inps=message_aggr, node_embs=self.node_embs, global_state=g)  # bs x n_nodes x n_dims
         return new_hidden
 
     def update_global(self, g, hidden_total, message_total, step):
@@ -43,7 +43,7 @@ class GGNNMixin(object):
     def update_node(self, hidden, message_aggr, g, step):
         if step == 0:
             self.node_fn = gops.NodeFunction(self.dataset, nn_module='GRU', ignore_nodetype=True, name='node_update_fn')
-        new_hidden = self.node_fn(hidden, message_aggr, node_embs=self.node_embs)  # bs x n_nodes x n_dims
+        new_hidden = self.node_fn(hidden, node_inps=message_aggr, node_embs=self.node_embs)  # bs x n_nodes x n_dims
         return new_hidden
 
 
@@ -65,9 +65,11 @@ class GATMixin(object):
                 vec_a_ga = tf.gather(vec_a, self.etype_ids)  # n_edges x (2*n_selfatt_dims) x 1
                 att_logits = tf.nn.leaky_relu(tf.matmul(hidden_v1v2, vec_a_ga))  # n_edges x bs x 1
 
-                att = gops.edge_normalize(att_logits, self.v1_ids)  # n_edges x bs x 1
+                att_logits = tf.transpose(att_logits, perm=[1, 0, 2])  # bs x n_edges x 1
+                att = gops.edge_normalize(att_logits, self.v1_ids)  # bs x n_edges x 1
+                att = tf.transpose(att, perm=[1, 0, 2])  # n_edges x bs x 1
 
-                message = tf.transpose(tf.matmul(hidden_v1, weight_ga) * tf.expand_dims(att, axis=2), perm=[1, 0, 2])  # bs x n_edges x n_selfatt_dims
+                message = tf.transpose(tf.matmul(hidden_v1, weight_ga) * att, perm=[1, 0, 2])  # bs x n_edges x n_selfatt_dims
                 message_li.append(message)
 
             return message_li
@@ -84,7 +86,7 @@ class GATMixin(object):
         if step == 0:
             self.node_fn = gops.NodeFunction(self.dataset, nn_module='GRU', ignore_nodetype=True, name='node_update_fn')
         message_aggr = tf.concat(message_aggr_li, axis=2)  # bs x n_nodes x n_dims
-        new_hidden = self.node_fn(hidden, message_aggr, node_embs=self.node_embs)  # bs x n_nodes x n_dims
+        new_hidden = self.node_fn(hidden, node_inps=message_aggr, node_embs=self.node_embs)  # bs x n_nodes x n_dims
         return new_hidden
 
 
@@ -256,7 +258,7 @@ class RW_Dynamic(RWModelBase):
 
     def propagate(self, step):
         hidden = self.hiddens[-1]  # bs x n_nodes x n_dims
-        g = self.globals[-1] if self.use_global else None  # bs x n_dims
+        g = self.globals[-1]  # bs x n_dims
         node_attention = self.node_attentions[-1]  # bs x n_nodes
 
         transition = self.compute_transition(hidden, step)  # bs x edges

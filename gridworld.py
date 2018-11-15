@@ -261,18 +261,21 @@ class GridWorld(object):
                 action_chain_str = '\t'.join(self.action_chains[i])
                 f_ac.write('%d\t%s\n' % (i, action_chain_str))
 
-                latent_direction_chain_str = '\t'.join(map(lambda d: '%.4f_%.4f' % d, self.latent_direction_chains[i]))
+                latent_direction_chain_str = '\t'.join(map(lambda d: '%.4f_%.4f' % (d[0], d[1]), self.latent_direction_chains[i]))
                 f_ldc.write('%d\t%s\n' % (i, latent_direction_chain_str))
 
     # load data of a gridworld
 
-    def load(self, data_dir=None):
+    def load(self, data_dir=None, seed=None, splitting_seed=None):
         if data_dir is None:
             data_dir = os.path.join(self.base_dir, self.gridworld_name)
         else:
             data_dir = os.path.join(self.base_dir, data_dir)
         if not os.path.exists(data_dir):
             raise ValueError("`data_dir` %s does not exist." % data_dir)
+
+        self.seed = seed
+        self.splitting_seed = splitting_seed
 
         self._load_map(data_dir)
         self._load_trajectories(data_dir)

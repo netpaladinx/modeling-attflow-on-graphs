@@ -85,9 +85,8 @@ class EdgeFunction(object):
             else:
                 edge_states = mlp(inputs, n_units_li, acti_li,
                                  reuse=self.reuse, name='%s_mlp' % self.name)  # n_edges x batch_size x n_edge_dims
-            edge_states = tf.transpose(edge_states, perm=[1, 0, 2])  # batch_size x n_edges x n_edge_dims
-
         elif self.nn_module == 'GRU':
+            edge_states = tf.transpose(edge_states, perm=[1, 0, 2])  # n_edges x batch_size x n_edge_dims
             if not self.ignore_edgetype:
                 edge_states = mgru(edge_states, inputs, self.graph.etype_ids, self.graph.n_etypes,
                                    reuse=self.reuse, name='%s_mgru' % self.name)  # n_edges x batch_size x n_edge_dims
@@ -95,6 +94,7 @@ class EdgeFunction(object):
                 edge_states = gru(edge_states, inputs, reuse=self.reuse, name='%s_gru' % self.name)  # n_edges x batch_size x n_edge_dims
         else:
             raise ValueError('We do not support %s yet' % self.nn_module)
+
         edge_states = tf.transpose(edge_states, perm=[1, 0, 2])  # batch_size x n_edges x n_edge_dims
 
         self.reuse = True
@@ -137,8 +137,10 @@ def edge_normalize(edge_states, sender_node_ids, n_nodes=None, sorted=True):
     Returns:
         edge_states_norm: batch_size x n_nodes x n_edge_dims
     """
+    edge_states = tf.transpose(edge_states, perm=[1, 0, 2])  # n_edges x batch_size x n_edge_dims
+
     if sorted:
-        edge_states_max = tf.segment_max(tf.transpose(edge_states, perm=[1, 0, 2]), sender_node_ids)  # n_nodes x batch_size x n_edge_dims
+        edge_states_max = tf.segment_max(edge_states, sender_node_ids)  # n_nodes x batch_size x n_edge_dims
         edge_states_max = tf.gather(edge_states_max, sender_node_ids)  # n_edges x batch_size x n_edge_dims
         edge_states_exp = tf.exp(edge_states - edge_states_max)  # n_edges x batch_size x n_edge_dims
         edge_states_sumexp = tf.segment_sum(edge_states_exp, sender_node_ids)  # n_nodes x batch_size x n_edge_dims
@@ -153,6 +155,8 @@ def edge_normalize(edge_states, sender_node_ids, n_nodes=None, sorted=True):
         edge_states_sumexp = tf.unsorted_segment_sum(edge_states_exp, sender_node_ids, n_nodes)  # n_nodes x batch_size x n_edge_dims
         edge_states_sumexp = tf.gather(edge_states_sumexp, sender_node_ids)  # n_edges x batch_size x n_edge_dims
         edge_states_norm = edge_states_exp / edge_states_sumexp  # n_edges x batch_size x n_edge_dims
+
+    edge_states_norm = tf.transpose(edge_states_norm, perm=[1, 0, 2])  # batch_size x n_edges x n_edge_dims
     return edge_states_norm
 
 
@@ -184,7 +188,7 @@ class NodeFunction(object):
 
         self.reuse = None
 
-    def __call__(self, node_states, node_inps, node_embs=None, global_state=None):
+    def __call__(self, node_states, node_inps=None, node_embs=None, global_state=None):
         """
         Args:
             node_states: batch_size x n_nodes x n_node_dims
@@ -200,7 +204,8 @@ class NodeFunction(object):
         if self.nn_module == 'MLP':
             inputs.append(node_states)
 
-        inputs.append(node_inps)
+        if node_inps is not None:
+            inputs.append(node_inps)
 
         if node_embs is not None:
             node_e = tf.tile(tf.expand_dims(node_embs, axis=0), [bs, 1, 1])  # batch_size x n_nodes x n_node_dims
@@ -223,9 +228,8 @@ class NodeFunction(object):
             else:
                 node_states = mlp(inputs, n_units_li, acti_li,
                                   reuse=self.reuse, name='%s_mlp' % self.name)  # n_nodes x batch_size x n_node_dims
-            node_states = tf.transpose(node_states, perm=[1, 0, 2])  # batch_size x n_nodes x n_node_dims
-
         elif self.nn_module == 'GRU':
+            node_states = tf.transpose(node_states, perm=[1, 0, 2])  # n_nodes x batch_size x n_edge_dims
             if not self.ignore_nodetype:
                 node_states = mgru(node_states, inputs, self.graph.ntype_ids, self.graph.n_ntypes,
                                    reuse=self.reuse, name='%s_mgru' % self.name)  # n_nodes x batch_size x n_node_dims
@@ -233,6 +237,7 @@ class NodeFunction(object):
                 node_states = gru(node_states, inputs, reuse=self.reuse, name='%s_gru' % self.name)  # n_nodes x batch_size x n_node_dims
         else:
             raise ValueError('We do not support %s yet' % self.nn_module)
+
         node_states = tf.transpose(node_states, perm=[1, 0, 2])  # batch_size x n_nodes x n_node_dims
 
         self.reuse = True

@@ -41,8 +41,9 @@ def mmlp(inp, n_units_li, acti_li, mlp_ids, n_mlps, reuse=None, name='mmlp'):
         out: mlp_ids_len x d1 x ... x dk x n_out_dims
     """
     with tf.variable_scope(name, reuse=reuse):
-        mlp_ids_len = tf.shape(inp)[0]
-        out = tf.reshape(inp, [mlp_ids_len, -1, n_mlps])  # mlp_ids_len x (d1*...*dk) x n_in_dims
+        mlp_ids_len = inp.get_shape()[0]
+        n_in_dims = inp.get_shape()[-1]
+        out = tf.reshape(inp, [mlp_ids_len, -1, n_in_dims])  # mlp_ids_len x (d1*...*dk) x n_in_dims
         for i, n_units in enumerate(n_units_li):
             acti = acti_li[i]
             kernel = tf.get_variable('kernel_%d' % i, shape=[n_mlps, out.get_shape()[-1], n_units],

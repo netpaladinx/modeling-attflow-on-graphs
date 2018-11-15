@@ -82,7 +82,7 @@ class Dataset(Graph):
                 e1 = self.entity2id[sp[0]]
                 rel = self.relation2id[sp[1]]
                 e2 = self.entity2id[sp[2]]
-                graph[e1][rel] = [e2]
+                graph[e1][rel] = e2
         return graph
 
     @property
